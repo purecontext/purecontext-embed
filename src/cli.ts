@@ -17,6 +17,7 @@ const ago = (iso: string | null) => {
   const m = (Date.now() - Date.parse(iso)) / 60_000
   return m < 60 ? `${Math.round(m)} min ago` : `${Math.round(m / 60)} h ago`
 }
+const EXIT_FALLBACK_MS = 5_000
 const mb = (bytes: number) => `${Math.round(bytes / 1_048_576)} MB`
 
 switch (command) {
@@ -26,7 +27,11 @@ switch (command) {
     process.on('SIGTERM', () => void service.stop('SIGTERM'))
     process.on('SIGINT', () => void service.stop('SIGINT'))
     await service.done
-    process.exit(0)
+    // process.exit() while the ONNX runtime's threads are alive aborts in
+    // C++ teardown ("mutex lock failed"), so the process ends on its own once
+    // the service has closed everything. The unref'd timer only fires if
+    // something still holds the event loop open.
+    setTimeout(() => process.exit(0), EXIT_FALLBACK_MS).unref()
     break
   }
   case 'status': {
