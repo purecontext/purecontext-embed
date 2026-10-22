@@ -62,18 +62,30 @@ export async function serviceStatus(paths: ServicePaths = servicePaths()): Promi
 }
 
 // Starts the service when it is absent, detached so it outlives this process.
-// A running service older than this package is stopped and replaced.
+// A running service older than this package is stopped and replaced. An older
+// client can respawn its own version during the handover and win the lock, so
+// the version is checked again after the start; two newer clients converge, so
+// one more round is enough.
 export async function ensureService(paths: ServicePaths = servicePaths()): Promise<void> {
-  const running = await serviceStatus(paths)
-  if (running) {
-    if (compareVersions(running.version, packageVersion()) >= 0) return
-    console.error(`[embed] replacing service ${running.version} with ${packageVersion()}`)
-    await rpc(paths.socket, 'POST', '/stop', {}, 30_000).catch(() => {})
-    await waitFor(async () => !(await isServing(paths.socket)), 30_000)
+  for (let round = 0; round < 2; round++) {
+    const running = await serviceStatus(paths)
+    if (running) {
+      if (compareVersions(running.version, packageVersion()) >= 0) return
+      console.error(`[embed] replacing service ${running.version} with ${packageVersion()}`)
+      await rpc(paths.socket, 'POST', '/stop', {}, 30_000).catch(() => {})
+      await waitFor(async () => !(await isServing(paths.socket)), 30_000)
+    }
+    spawnService(paths)
+    if (!(await waitFor(() => isServing(paths.socket), 15_000))) {
+      throw new EmbedServiceError(`the embed service did not start; see ${paths.log}`, true)
+    }
   }
-  spawnService(paths)
-  if (!(await waitFor(() => isServing(paths.socket), 15_000))) {
-    throw new EmbedServiceError(`the embed service did not start; see ${paths.log}`, true)
+  const running = await serviceStatus(paths)
+  if (!running || compareVersions(running.version, packageVersion()) < 0) {
+    throw new EmbedServiceError(
+      `an older embed service (${running?.version ?? 'unknown'}) keeps replacing ${packageVersion()}; see ${paths.log}`,
+      true,
+    )
   }
 }
 

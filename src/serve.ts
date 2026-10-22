@@ -186,6 +186,8 @@ export async function serve(paths: ServicePaths = servicePaths(), opts: ServeOpt
   }
 
   const embed = async (req: EmbedRequest, res: ServerResponse) => {
+    // A body that finished arriving after stop's cancel loop is not in `open`.
+    if (shuttingDown) return send(res, 503, { error: 'the embed service is stopping; retry' })
     let cancelled: Error | null = null
     const cancel = (err: Error) => {
       cancelled ??= err
@@ -314,6 +316,7 @@ export async function serve(paths: ServicePaths = servicePaths(), opts: ServeOpt
     log('socket file is gone; listening again')
     server.closeAllConnections()
     server.close(() => {
+      if (shuttingDown) return
       const failed = (err: Error) => log(`re-listen failed: ${err.message}`)
       server.once('error', failed)
       server.listen(paths.socket, () => server.off('error', failed))

@@ -55,23 +55,37 @@ test('ensureService starts a detached service that outlives the call', async () 
   assert.equal(existsSync(paths.lock), false)
 })
 
-test('a client replaces an older service with its own version', async () => {
-  // A copy of this package that says it is 0.0.1, served from a path the lock
-  // still recognises as the embed service.
-  const old = join(root, 'old', 'embed')
-  mkdirSync(old, { recursive: true })
-  cpSync(fileURLToPath(new URL('../dist', import.meta.url)), join(old, 'dist'), { recursive: true })
-  writeFileSync(
-    join(old, 'package.json'),
-    JSON.stringify({ name: '@purecontext/embed', version: '0.0.1', type: 'module' }),
-  )
-
-  const paths = freshPaths()
-  const child = spawn(process.execPath, [join(old, 'dist', 'cli.js'), 'serve', '--home', paths.home], {
+// A copy of this package that says it is 0.0.1, served from a path the lock
+// still recognises as the embed service. `listenDelayMs` holds it between
+// taking the lock and listening, as a slow start would.
+function startOldService(home, { listenDelayMs = 0 } = {}) {
+  const old = join(root, `old-${listenDelayMs}`, 'embed')
+  if (!existsSync(old)) {
+    mkdirSync(old, { recursive: true })
+    cpSync(fileURLToPath(new URL('../dist', import.meta.url)), join(old, 'dist'), { recursive: true })
+    writeFileSync(
+      join(old, 'package.json'),
+      JSON.stringify({ name: '@purecontext/embed', version: '0.0.1', type: 'module' }),
+    )
+    const serveJs = join(old, 'dist', 'serve.js')
+    const source = readFileSync(serveJs, 'utf8')
+    const marker = 'const version = packageVersion();'
+    assert.ok(source.includes(marker), 'the delay marker is gone from serve.js')
+    writeFileSync(
+      serveJs,
+      source.replace(marker, `await new Promise((r) => setTimeout(r, ${listenDelayMs})); ${marker}`),
+    )
+  }
+  const child = spawn(process.execPath, [join(old, 'dist', 'cli.js'), 'serve', '--home', home], {
     detached: true,
     stdio: 'ignore',
   })
   child.unref()
+}
+
+test('a client replaces an older service with its own version', async () => {
+  const paths = freshPaths()
+  startOldService(paths.home)
   let status = null
   for (let i = 0; i < 100 && !status; i++) {
     status = await serviceStatus(paths)
@@ -84,6 +98,19 @@ test('a client replaces an older service with its own version', async () => {
   assert.equal(now.version, version)
   assert.notEqual(now.pid, status.pid)
   assert.equal(alive(status.pid), false, 'the old service is still running')
+})
+
+test('a client whose own start loses the lock to an older service still ends on its version', async () => {
+  // The older service holds the lock but is not listening yet, so this
+  // client's spawn backs out and the first service to answer is the old one.
+  const paths = freshPaths()
+  startOldService(paths.home, { listenDelayMs: 1500 })
+  for (let i = 0; i < 50 && !existsSync(paths.lock); i++) await sleep(50)
+  assert.ok(existsSync(paths.lock), 'the old service never took the lock')
+  assert.equal(await serviceStatus(paths), null, 'the old service listened before the race began')
+
+  await ensureService(paths)
+  assert.equal((await serviceStatus(paths)).version, version)
 })
 
 test('a spawned service exits when idle, and the next call starts a new one', async () => {
