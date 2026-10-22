@@ -49,6 +49,11 @@ interface ModelEntry extends ModelStatus {
 
 class Stopping extends Error {}
 
+// A model directory that exists but will not load needs its files fixed, the
+// same as one that does not exist, so neither is worth an automatic retry.
+// The failed entry still reloads on the next request.
+class ModelLoadError extends Error {}
+
 const log = (msg: string) => console.error(`${new Date().toISOString()} [embed] ${msg}`)
 const firstLine = (err: unknown) => (err instanceof Error ? err.message : String(err)).split('\n')[0]
 
@@ -151,7 +156,9 @@ export async function serve(paths: ServicePaths = servicePaths(), opts: ServeOpt
         count: entry?.count ?? 0,
         dims: null,
         error: null,
-        ready: loadModel(dir),
+        ready: loadModel(dir).catch((err) => {
+          throw new ModelLoadError(firstLine(err))
+        }),
       }
       fresh.ready.then(
         () => {
@@ -211,6 +218,7 @@ export async function serve(paths: ServicePaths = servicePaths(), opts: ServeOpt
       send(res, 200, { dims: vectors[0]?.length ?? null, vectors: vectors.map(toBase64) })
     } catch (err) {
       if (err instanceof Stopping) send(res, 503, { error: err.message })
+      else if (err instanceof ModelLoadError) send(res, 422, { error: err.message })
       else send(res, 500, { error: firstLine(err) })
     } finally {
       open.delete(cancel)

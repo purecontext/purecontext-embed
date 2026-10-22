@@ -38,7 +38,7 @@ const vectors = await embed(modelDir, chunks, { priority: 'batch' })
 - **One service per home.** A lock decides between clients that start it at the same moment, and a lock left by a dead process is reclaimed.
 - **Upgrades.** A client newer than the running service stops it and starts its own version. An older client uses a newer service.
 - **Idle exit.** With no requests for 30 minutes, the service exits and frees the model's memory. The next call starts it again, which costs a few seconds while the model loads. Set `PURECONTEXT_EMBED_IDLE_MS` to change the wait.
-- **Retries.** When the service exited between calls, or is stopping for an upgrade, the client starts a new one and retries once. Errors throw `EmbedServiceError`, whose `retryable` says whether trying again later could succeed.
+- **Retries.** When the service exited between calls, or is stopping for an upgrade, the client starts a new one and retries once. Errors throw `EmbedServiceError`, whose `retryable` says whether trying again later could succeed. A model directory that is missing or will not load is not retryable: it needs its files fixed, and the next request after that loads it again.
 
 There is no in-process fallback. A process that cannot reach the service fails its embed rather than loading a private copy, since a silent fallback would bring back one copy per process.
 
