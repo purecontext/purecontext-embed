@@ -31,7 +31,12 @@ switch (command) {
     // C++ teardown ("mutex lock failed"), so the process ends on its own once
     // the service has closed everything. The unref'd timer only fires if
     // something still holds the event loop open.
-    setTimeout(() => process.exit(0), EXIT_FALLBACK_MS).unref()
+    setTimeout(() => {
+      console.error(
+        `${new Date().toISOString()} [embed] still open ${EXIT_FALLBACK_MS} ms after stopping: ${process.getActiveResourcesInfo().join(', ')}; forcing exit`,
+      )
+      process.exit(0)
+    }, EXIT_FALLBACK_MS).unref()
     break
   }
   case 'status': {
