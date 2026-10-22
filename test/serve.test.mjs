@@ -115,7 +115,7 @@ test('bad requests are refused with 400 and leave the service up', async () => {
   }
 })
 
-test('a model that fails to load gives a retryable error, and the next request loads again', async () => {
+test('a model that fails to load is refused with 422, not retryable, and the next request loads again', async () => {
   const paths = freshPaths()
   let attempt = 0
   const flaky = async (dir) => {
@@ -126,7 +126,7 @@ test('a model that fails to load gives a retryable error, and the next request l
   try {
     await assert.rejects(
       embed(modelDir, ['a'], { paths }),
-      (err) => err.retryable === true && /no model\.onnx/.test(err.message),
+      (err) => err.retryable === false && /no model\.onnx/.test(err.message),
     )
     const [v] = await embed(modelDir, ['a'], { paths })
     assert.equal(v[0], 1)

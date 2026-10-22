@@ -1,6 +1,6 @@
 {
   "name": "@purecontext/embed",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One embedding model per machine: a small service that loads an ONNX text-embedding model once and serves every process that needs vectors",
   "type": "module",
   "main": "dist/index.js",
