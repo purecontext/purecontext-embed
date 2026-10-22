@@ -1,0 +1,6 @@
+export { EmbedServiceError, embed, ensureService, serviceStatus, stopService } from './client.js'
+export type { EmbedOptions } from './client.js'
+export type { Priority } from './queue.js'
+export type { ModelStatus, ServiceStatus } from './serve.js'
+export { servicePaths } from './paths.js'
+export type { ServicePaths } from './paths.js'
