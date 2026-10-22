@@ -167,3 +167,26 @@ test(
     assert.deepEqual([...second], [...first])
   },
 )
+
+test(
+  'a service that loaded the model exits on its own with code 0 when stopped',
+  { skip: !hasModel && `no model at ${realModel}` },
+  async () => {
+    const paths = freshPaths()
+    const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url))
+    const child = spawn(process.execPath, [cli, 'serve', '--home', paths.home], { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    child.stderr.on('data', (d) => {
+      stderr += d
+    })
+    const exited = new Promise((r) => child.on('exit', (code, signal) => r({ code, signal })))
+    for (let i = 0; i < 100 && !(await serviceStatus(paths)); i++) await sleep(100)
+    await embed(realModel, ['load the model'], { paths })
+    const stoppedAt = Date.now()
+    assert.equal(await stopService(paths), true)
+    const { code, signal } = await exited
+    assert.deepEqual({ code, signal }, { code: 0, signal: null }, stderr)
+    assert.doesNotMatch(stderr, /mutex lock failed/)
+    assert.ok(Date.now() - stoppedAt < 4_000, 'exit waited for the fallback timer')
+  },
+)
